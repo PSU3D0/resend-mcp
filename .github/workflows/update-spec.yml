@@ -1,0 +1,61 @@
+name: Update OpenAPI Spec
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 6 AM UTC daily
+  workflow_dispatch:
+
+jobs:
+  check-spec:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Fetch and transform spec
+        run: |
+          curl -sL https://raw.githubusercontent.com/resend/resend-openapi/main/resend.yaml -o /tmp/resend-upstream.yaml
+          python scripts/transform_spec.py /tmp/resend-upstream.yaml /tmp/resend-transformed.yaml
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if diff -q src/specs/resend.yaml /tmp/resend-transformed.yaml > /dev/null 2>&1; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update spec
+        if: steps.diff.outputs.changed == 'true'
+        run: cp /tmp/resend-transformed.yaml src/specs/resend.yaml
+
+      - name: Verify build
+        if: steps.diff.outputs.changed == 'true'
+        run: cargo check
+
+      - name: Create Pull Request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: 'chore: update Resend OpenAPI spec'
+          title: 'chore: update Resend OpenAPI spec'
+          body: |
+            Automated update of the Resend OpenAPI specification.
+
+            Source: https://github.com/resend/resend-openapi/blob/main/resend.yaml
+
+            Transformations applied:
+            - Added operationId to all endpoints
+            - Fixed YAML quoting issues
+          branch: update-resend-spec
+          delete-branch: true

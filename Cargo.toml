@@ -1,0 +1,23 @@
+[package]
+name = "resend-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "MCP server for the Resend email API"
+license = "Apache-2.0"
+repository = "https://github.com/psu3d0/resend-mcp"
+homepage = "https://github.com/psu3d0/resend-mcp"
+readme = "README.md"
+keywords = ["mcp", "resend", "email", "api", "llm"]
+categories = ["network-programming", "email"]
+
+[dependencies]
+rmcp-openapi = "0.20.7"
+rmcp = { version = "0.10.0", default-features = false, features = ["server", "base64", "macros", "transport-streamable-http-server", "transport-streamable-http-server-session", "transport-worker"] }
+rmcp-actix-web = { version = "0.8.4", default-features = false, features = ["transport-streamable-http"] }
+actix-web = "4.9"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde_json = "1"
+serde_yaml = "0.9"
+url = "2"
