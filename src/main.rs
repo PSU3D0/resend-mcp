@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use actix_web::{web, App, HttpServer};
+use actix_web::{App, HttpServer, web};
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp_actix_web::transport::StreamableHttpService;
 use rmcp_openapi::Server;
