@@ -1,7 +1,7 @@
 [package]
 name = "resend-mcp"
-version = "0.1.0"
-edition = "2021"
+version = "0.2.0"
+edition = "2024"
 description = "MCP server for the Resend email API"
 license = "Apache-2.0"
 repository = "https://github.com/psu3d0/resend-mcp"
