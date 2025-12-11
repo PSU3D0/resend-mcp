@@ -20,7 +20,7 @@ cargo install --path .
 
 ```bash
 docker pull ghcr.io/psu3d0/resend-mcp:latest
-docker run -p 8080:8080 ghcr.io/psu3d0/resend-mcp:latest
+docker run -p 8080:8080 -e RESEND_API_KEY=re_xxx ghcr.io/psu3d0/resend-mcp:latest
 ```
 
 ### Pre-built Binaries
@@ -30,14 +30,26 @@ Download from [GitHub Releases](https://github.com/psu3d0/resend-mcp/releases).
 ## Usage
 
 ```bash
-# Start server (default: http://127.0.0.1:8080/mcp)
-resend-mcp
+# Start server with stdio transport (default)
+RESEND_API_KEY=re_xxx resend-mcp
 
-# Custom bind address
-BIND_ADDRESS=0.0.0.0 PORT=3000 resend-mcp
+# Or via CLI flag
+resend-mcp --api-key re_xxx
+
+# Use HTTP transport
+resend-mcp --api-key re_xxx --transport http
+
+# Custom bind address (HTTP mode)
+resend-mcp --api-key re_xxx --transport http --bind-address 0.0.0.0 --port 3000
+
+# Custom base URL (for proxies or testing)
+resend-mcp --api-key re_xxx --base-url https://custom.api.com
+
+# Disable startup health check
+resend-mcp --api-key re_xxx --no-health-check
 
 # Debug logging
-RESEND_MCP_LOG=debug resend-mcp
+RESEND_MCP_LOG=debug resend-mcp --api-key re_xxx
 ```
 
 ### MCP Client Configuration
@@ -50,8 +62,7 @@ RESEND_MCP_LOG=debug resend-mcp
     "resend": {
       "command": "resend-mcp",
       "env": {
-        "BIND_ADDRESS": "127.0.0.1",
-        "PORT": "8080"
+        "RESEND_API_KEY": "re_xxx"
       }
     }
   }
@@ -65,7 +76,7 @@ RESEND_MCP_LOG=debug resend-mcp
   "mcpServers": {
     "resend": {
       "command": "docker",
-      "args": ["run", "--rm", "-p", "8080:8080", "ghcr.io/psu3d0/resend-mcp:latest"]
+      "args": ["run", "--rm", "-p", "8080:8080", "-e", "RESEND_API_KEY=re_xxx", "ghcr.io/psu3d0/resend-mcp:latest"]
     }
   }
 }
@@ -137,17 +148,23 @@ RESEND_MCP_LOG=debug resend-mcp
 - `updateWebhook` - Update a webhook
 - `deleteWebhook` - Delete a webhook
 
-## Environment Variables
+## Configuration
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BIND_ADDRESS` | `127.0.0.1` | Server bind address |
-| `PORT` | `8080` | Server port |
-| `RESEND_MCP_LOG` | `info` | Log level (`error`, `warn`, `info`, `debug`, `trace`) |
+All options can be set via CLI flags or environment variables.
 
-## Authentication
+| CLI Flag | Env Variable | Default | Description |
+|----------|--------------|---------|-------------|
+| `--api-key` | `RESEND_API_KEY` | *required* | Resend API key |
+| `--transport` | `TRANSPORT` | `stdio` | Transport mode (`stdio` or `http`) |
+| `--base-url` | `RESEND_BASE_URL` | `https://api.resend.com` | Resend API base URL |
+| `--bind-address` | `BIND_ADDRESS` | `127.0.0.1` | Server bind address (HTTP mode) |
+| `--port` | `PORT` | `8080` | Server port (HTTP mode) |
+| `--no-health-check` | - | `false` | Disable startup health check |
+| - | `RESEND_MCP_LOG` | `info` | Log level (`error`, `warn`, `info`, `debug`, `trace`) |
 
-The Resend API requires a Bearer token. Pass it via the MCP client's authorization header - the server forwards it to the Resend API.
+## Health Check
+
+On startup, the server calls `listDomains` to verify API key validity. This can be disabled with `--no-health-check`. A failed health check logs a warning but does not prevent startup.
 
 ## Development
 
@@ -156,7 +173,7 @@ The Resend API requires a Bearer token. Pass it via the MCP client's authorizati
 cargo build
 
 # Run with debug logging
-RESEND_MCP_LOG=debug cargo run
+RESEND_MCP_LOG=debug cargo run -- --api-key re_xxx
 
 # Format and lint
 cargo fmt && cargo clippy
