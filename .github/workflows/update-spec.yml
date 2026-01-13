@@ -2,15 +2,16 @@ name: Update OpenAPI Spec
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # 6 AM UTC daily
+    - cron: '0 6 * * *'
   workflow_dispatch:
 
 jobs:
-  check-spec:
+  update-spec:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -33,15 +34,57 @@ jobs:
             echo "changed=false" >> $GITHUB_OUTPUT
           else
             echo "changed=true" >> $GITHUB_OUTPUT
+            # Save diff to file for Claude
+            diff -u src/specs/resend.yaml /tmp/resend-transformed.yaml > /tmp/spec.diff || true
           fi
 
-      - name: Update spec
+      - name: Update spec file
         if: steps.diff.outputs.changed == 'true'
         run: cp /tmp/resend-transformed.yaml src/specs/resend.yaml
 
+      - name: Get RFC number
+        if: steps.diff.outputs.changed == 'true'
+        id: rfc
+        run: |
+          LAST_RFC=$(ls docs/rfcs/*.md 2>/dev/null | grep -E '[0-9]{4}-' | sort -r | head -1 | grep -oE '[0-9]{4}' | head -1 || echo "0001")
+          NEXT_RFC=$(printf "%04d" $((10#$LAST_RFC + 1)))
+          DATE=$(date +%Y-%m-%d)
+          echo "number=$NEXT_RFC" >> $GITHUB_OUTPUT
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+          echo "filename=docs/rfcs/${NEXT_RFC}-spec-update-${DATE}.md" >> $GITHUB_OUTPUT
+
+      - name: Claude Review
+        if: steps.diff.outputs.changed == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Review the OpenAPI spec changes for resend-mcp.
+
+            ## Instructions
+            Read .github/prompts/spec-review.md for detailed review instructions.
+
+            ## Spec Diff
+            Read the diff file at /tmp/spec.diff
+
+            ## Task
+            1. Read /tmp/spec.diff to see the changes
+            2. Read docs/rfcs/TEMPLATE.md for the RFC format
+            3. Read scripts/transform_spec.py to understand the operationId mapping system
+            4. Create an RFC at: ${{ steps.rfc.outputs.filename }}
+            5. Set RFC number to ${{ steps.rfc.outputs.number }}
+            6. Set date to ${{ steps.rfc.outputs.date }}
+            7. For new endpoints, suggest operationId names following existing conventions
+            8. Include the diff summary in the RFC
+
+            Only create the RFC markdown file. Do not modify any code files.
+
       - name: Verify build
         if: steps.diff.outputs.changed == 'true'
-        run: cargo check
+        run: |
+          rustup default stable
+          cargo check
 
       - name: Create Pull Request
         if: steps.diff.outputs.changed == 'true'
@@ -52,10 +95,18 @@ jobs:
           body: |
             Automated update of the Resend OpenAPI specification.
 
-            Source: https://github.com/resend/resend-openapi/blob/main/resend.yaml
+            ## Source
+            https://github.com/resend/resend-openapi/blob/main/resend.yaml
 
-            Transformations applied:
+            ## Transformations Applied
             - Added operationId to all endpoints
+            - Inlined parameter references
             - Fixed YAML quoting issues
+
+            ## RFC
+            See `${{ steps.rfc.outputs.filename }}` for detailed change analysis.
+
+            ---
+            *Review the RFC before merging. If new endpoints were added, update `scripts/transform_spec.py` with proper operationId mappings.*
           branch: update-resend-spec
           delete-branch: true
