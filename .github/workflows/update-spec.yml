@@ -34,16 +34,31 @@ jobs:
             echo "changed=false" >> $GITHUB_OUTPUT
           else
             echo "changed=true" >> $GITHUB_OUTPUT
-            # Save diff to file for Claude
-            diff -u src/specs/resend.yaml /tmp/resend-transformed.yaml > /tmp/spec.diff || true
+            # Save diff to repo directory (Claude can only access repo files)
+            diff -u src/specs/resend.yaml /tmp/resend-transformed.yaml > .github/spec.diff || true
           fi
 
-      - name: Update spec file
+      - name: Check for existing PR
         if: steps.diff.outputs.changed == 'true'
+        id: existing_pr
+        run: |
+          PR_COUNT=$(gh pr list --head update-resend-spec --state open --json number --jq length)
+          echo "exists=$([[ $PR_COUNT -gt 0 ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Skip if PR exists
+        if: steps.diff.outputs.changed == 'true' && steps.existing_pr.outputs.exists == 'true'
+        run: |
+          echo "::notice::Skipping - PR already exists for update-resend-spec branch"
+          exit 0
+
+      - name: Update spec file
+        if: steps.diff.outputs.changed == 'true' && steps.existing_pr.outputs.exists != 'true'
         run: cp /tmp/resend-transformed.yaml src/specs/resend.yaml
 
       - name: Get RFC number
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && steps.existing_pr.outputs.exists != 'true'
         id: rfc
         run: |
           LAST_RFC=$(ls docs/rfcs/*.md 2>/dev/null | grep -E '[0-9]{4}-' | sort -r | head -1 | grep -oE '[0-9]{4}' | head -1 || echo "0001")
@@ -54,40 +69,53 @@ jobs:
           echo "filename=docs/rfcs/${NEXT_RFC}-spec-update-${DATE}.md" >> $GITHUB_OUTPUT
 
       - name: Claude Review
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && steps.existing_pr.outputs.exists != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
-            Review the OpenAPI spec changes for resend-mcp.
+            Review the OpenAPI spec changes for resend-mcp and create an RFC document.
 
             ## Instructions
             Read .github/prompts/spec-review.md for detailed review instructions.
 
             ## Spec Diff
-            Read the diff file at /tmp/spec.diff
+            The diff is saved at .github/spec.diff - read this file to see the changes.
 
             ## Task
-            1. Read /tmp/spec.diff to see the changes
+            1. Read .github/spec.diff to see the changes
             2. Read docs/rfcs/TEMPLATE.md for the RFC format
             3. Read scripts/transform_spec.py to understand the operationId mapping system
             4. Create an RFC at: ${{ steps.rfc.outputs.filename }}
             5. Set RFC number to ${{ steps.rfc.outputs.number }}
             6. Set date to ${{ steps.rfc.outputs.date }}
             7. For new endpoints, suggest operationId names following existing conventions
-            8. Include the diff summary in the RFC
+            8. Include a summary of the diff in the RFC (not the full diff)
 
-            Only create the RFC markdown file. Do not modify any code files.
+            Create the RFC markdown file now.
+          allowed_tools: |
+            Read
+            Write
+            Glob
+            Grep
+            Bash(git diff:*)
+            Bash(git status:*)
+            Bash(ls:*)
+            Bash(cat:*)
+
+      - name: Cleanup diff file
+        if: always()
+        run: rm -f .github/spec.diff
 
       - name: Verify build
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && steps.existing_pr.outputs.exists != 'true'
         run: |
           rustup default stable
           cargo check
 
       - name: Create Pull Request
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && steps.existing_pr.outputs.exists != 'true'
         uses: peter-evans/create-pull-request@v7
         with:
           commit-message: 'chore: update Resend OpenAPI spec'
