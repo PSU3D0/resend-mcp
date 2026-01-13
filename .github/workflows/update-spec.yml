@@ -94,15 +94,7 @@ jobs:
             8. Include a summary of the diff in the RFC (not the full diff)
 
             Create the RFC markdown file now.
-          allowed_tools: |
-            Read
-            Write
-            Glob
-            Grep
-            Bash(git diff:*)
-            Bash(git status:*)
-            Bash(ls:*)
-            Bash(cat:*)
+          claude_args: "--dangerously-skip-permissions"
 
       - name: Cleanup diff file
         if: always()
